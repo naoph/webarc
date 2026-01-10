@@ -8,6 +8,16 @@ pub struct InitiateCaptureRequest {
     extractor: String,
 }
 
+impl InitiateCaptureRequest {
+    pub fn url(&self) -> &url::Url {
+        &self.url
+    }
+
+    pub fn extractor(&self) -> &str {
+        &self.extractor
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]

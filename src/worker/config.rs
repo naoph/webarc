@@ -3,7 +3,7 @@ use std::path::Path;
 use serde::Deserialize;
 use snafu::prelude::*;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct WorkerConfig {
     listen: (String, u16),
     auth_keys: Vec<String>,
@@ -23,6 +23,14 @@ impl WorkerConfig {
 
     pub fn listen(&self) -> &(String, u16) {
         &self.listen
+    }
+
+    pub fn auth_keys(&self) -> Vec<String> {
+        self.auth_keys.clone()
+    }
+
+    pub fn extractors(&self) -> std::collections::HashMap<String, String> {
+        self.extractors.clone()
     }
 }
 
