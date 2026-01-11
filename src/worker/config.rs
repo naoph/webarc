@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use snafu::prelude::*;
@@ -8,6 +8,7 @@ pub struct WorkerConfig {
     listen: (String, u16),
     auth_tokens: Vec<String>,
     extractors: std::collections::HashMap<String, String>,
+    blob_dir: PathBuf,
 }
 
 impl WorkerConfig {
@@ -31,6 +32,10 @@ impl WorkerConfig {
 
     pub fn extractors(&self) -> std::collections::HashMap<String, String> {
         self.extractors.clone()
+    }
+
+    pub fn blob_dir(&self) -> PathBuf {
+        self.blob_dir.clone()
     }
 }
 

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use log::*;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -9,6 +11,8 @@ pub struct State {
     auth_tokens: RwLock<Vec<String>>,
     extractors: RwLock<std::collections::HashMap<String, String>>,
     tasks: RwLock<std::collections::HashMap<Uuid, QueryCaptureProgressResponse>>,
+    blob_hashes: RwLock<std::collections::HashMap<Uuid, String>>,
+    blob_dir: PathBuf,
 }
 
 impl State {
@@ -18,6 +22,8 @@ impl State {
             auth_tokens: RwLock::new(config.auth_tokens()),
             extractors: RwLock::new(config.extractors()),
             tasks: RwLock::new(std::collections::HashMap::new()),
+            blob_hashes: RwLock::new(std::collections::HashMap::new()),
+            blob_dir: config.blob_dir(),
         }
     }
 
@@ -36,10 +42,31 @@ impl State {
         extractors.get(extractor).map(|a| a.clone())
     }
 
+    /// Get the blob storage directory
+    pub fn blob_dir(&self) -> &PathBuf {
+        &self.blob_dir
+    }
+
     /// Register a newly-spawned capture
     pub async fn register_capture(&self, ticket: Uuid) {
         let mut tasks = self.tasks.write().await;
         tasks.insert(ticket, QueryCaptureProgressResponse::InProgress);
         debug!("Task list:\n{:#?}", tasks);
+    }
+
+    /// Mark capture as failed
+    pub async fn abort_capture(&self, ticket: Uuid) {
+        let mut tasks = self.tasks.write().await;
+        tasks.insert(ticket, QueryCaptureProgressResponse::Failed);
+        debug!("Task {ticket} failed");
+    }
+
+    /// Mark capture as completed
+    pub async fn finalize_capture(&self, ticket: Uuid, hash: String) {
+        let mut tasks = self.tasks.write().await;
+        tasks.insert(ticket, QueryCaptureProgressResponse::Completed);
+        let mut hashes = self.blob_hashes.write().await;
+        hashes.insert(ticket, hash);
+        debug!("Task {ticket} completed");
     }
 }
