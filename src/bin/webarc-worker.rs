@@ -45,6 +45,21 @@ async fn capture_create(
     HttpResponse::Ok().json(corwrk::InitiateCaptureResponse::Initiated { ticket: new_ticket })
 }
 
+#[get("/capture/progress/{ticket}")]
+async fn capture_progress(
+    path: web::Path<uuid::Uuid>,
+    full_req: HttpRequest,
+    state: web::Data<worker::state::State>,
+) -> impl Responder {
+    let bearer = get_bearer_token(&full_req);
+    if !state.validate_auth_token(bearer).await {
+        return HttpResponse::Unauthorized().finish();
+    }
+    let ticket = path.into_inner();
+    let status = state.capture_status(&ticket).await;
+    HttpResponse::Ok().json(status)
+}
+
 async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
     let data = web::Data::new(worker::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -52,6 +67,7 @@ async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
             .app_data(data.clone())
             .service(version)
             .service(capture_create)
+            .service(capture_progress)
     })
     .bind(config.listen())?
     .run()

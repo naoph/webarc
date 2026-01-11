@@ -33,7 +33,7 @@ pub struct QueryCaptureProgressRequest {
     ticket: Uuid,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]
 pub enum QueryCaptureProgressResponse {
@@ -41,4 +41,5 @@ pub enum QueryCaptureProgressResponse {
     UnsupportedUrl,
     Failed,
     Completed,
+    NoSuchCapture,
 }

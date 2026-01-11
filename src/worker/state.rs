@@ -47,6 +47,16 @@ impl State {
         &self.blob_dir
     }
 
+    /// Get the status of an ongoing capture
+    pub async fn capture_status(&self, ticket: &Uuid) -> QueryCaptureProgressResponse {
+        self.tasks
+            .read()
+            .await
+            .get(ticket)
+            .unwrap_or(&QueryCaptureProgressResponse::NoSuchCapture)
+            .clone()
+    }
+
     /// Register a newly-spawned capture
     pub async fn register_capture(&self, ticket: Uuid) {
         let mut tasks = self.tasks.write().await;
