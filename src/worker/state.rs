@@ -79,4 +79,10 @@ impl State {
         hashes.insert(ticket, hash);
         debug!("Task {ticket} completed");
     }
+
+    /// Get the hash of a completed capture
+    pub async fn get_hash(&self, ticket: &Uuid) -> Option<String> {
+        let hashes = self.blob_hashes.read().await;
+        hashes.get(ticket).map(|h| h.to_string())
+    }
 }

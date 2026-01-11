@@ -57,6 +57,29 @@ async fn capture_progress(
     HttpResponse::Ok().json(status)
 }
 
+#[post("/capture/confirm")]
+async fn capture_confirm(
+    req: web::Json<corwrk::ConfirmCaptureRequest>,
+    full_req: HttpRequest,
+    state: web::Data<worker::state::State>,
+) -> impl Responder {
+    let bearer = get_bearer_token(&full_req);
+    if !state.validate_auth_token(bearer).await {
+        return HttpResponse::Unauthorized().finish();
+    }
+    let known_hash = match state.get_hash(req.ticket()).await {
+        None => {
+            return HttpResponse::NotFound().json(corwrk::ConfirmCaptureResponse::NoSuchCapture);
+        }
+        Some(h) => h,
+    };
+    if known_hash == req.hash() {
+        HttpResponse::Ok().json(corwrk::ConfirmCaptureResponse::CorrectHash)
+    } else {
+        HttpResponse::Ok().json(corwrk::ConfirmCaptureResponse::IncorrectHash)
+    }
+}
+
 async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
     let data = web::Data::new(worker::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -65,6 +88,7 @@ async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
             .service(version)
             .service(capture_create)
             .service(capture_progress)
+            .service(capture_confirm)
     })
     .bind(config.listen())?
     .run()

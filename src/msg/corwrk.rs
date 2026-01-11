@@ -43,3 +43,28 @@ pub enum QueryCaptureProgressResponse {
     Completed,
     NoSuchCapture,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ConfirmCaptureRequest {
+    ticket: Uuid,
+    hash: String,
+}
+
+impl ConfirmCaptureRequest {
+    pub fn ticket(&self) -> &Uuid {
+        &self.ticket
+    }
+
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "result")]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmCaptureResponse {
+    CorrectHash,
+    IncorrectHash,
+    NoSuchCapture,
+}
