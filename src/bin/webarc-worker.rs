@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, get, post, web};
 
 use webarc::msg::corwrk;
