@@ -1,6 +1,7 @@
 //! Messages passed between `webarc-core` and `webarc-worker`.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InitiateCaptureRequest {
@@ -22,7 +23,22 @@ impl InitiateCaptureRequest {
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]
 pub enum InitiateCaptureResponse {
-    Initiated { ticket: usize },
+    Initiated { ticket: Uuid },
     InvalidUrl,
     InvalidExtractor,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct QueryCaptureProgressRequest {
+    ticket: Uuid,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "result")]
+#[serde(rename_all = "snake_case")]
+pub enum QueryCaptureProgressResponse {
+    InProgress,
+    UnsupportedUrl,
+    Failed,
+    Completed,
 }

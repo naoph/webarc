@@ -1,10 +1,14 @@
+use log::*;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use super::config::WorkerConfig;
+use crate::msg::corwrk::QueryCaptureProgressResponse;
 
 pub struct State {
     auth_tokens: RwLock<Vec<String>>,
     extractors: RwLock<std::collections::HashMap<String, String>>,
+    tasks: RwLock<std::collections::HashMap<Uuid, QueryCaptureProgressResponse>>,
 }
 
 impl State {
@@ -13,6 +17,7 @@ impl State {
         Self {
             auth_tokens: RwLock::new(config.auth_tokens()),
             extractors: RwLock::new(config.extractors()),
+            tasks: RwLock::new(std::collections::HashMap::new()),
         }
     }
 
@@ -29,5 +34,12 @@ impl State {
     pub async fn locate_extractor(&self, extractor: &str) -> Option<String> {
         let extractors = self.extractors.read().await;
         extractors.get(extractor).map(|a| a.clone())
+    }
+
+    /// Register a newly-spawned capture
+    pub async fn register_capture(&self, ticket: Uuid) {
+        let mut tasks = self.tasks.write().await;
+        tasks.insert(ticket, QueryCaptureProgressResponse::InProgress);
+        debug!("Task list:\n{:#?}", tasks);
     }
 }

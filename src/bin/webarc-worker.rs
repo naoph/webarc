@@ -31,14 +31,18 @@ async fn capture_create(
     if !state.validate_auth_token(bearer).await {
         return HttpResponse::Unauthorized().finish();
     }
-    let _exe = match state.locate_extractor(req.extractor()).await {
+    let exe = match state.locate_extractor(req.extractor()).await {
         None => {
             let response = corwrk::InitiateCaptureResponse::InvalidExtractor;
             return HttpResponse::BadRequest().json(response);
         }
         Some(e) => e,
     };
-    HttpResponse::Ok().json(corwrk::InitiateCaptureResponse::Initiated { ticket: 0 })
+    let url = req.url().clone();
+    let new_ticket = uuid::Uuid::new_v4();
+    state.register_capture(new_ticket).await;
+    tokio::spawn(worker::task::capture_task(new_ticket, exe, url, state));
+    HttpResponse::Ok().json(corwrk::InitiateCaptureResponse::Initiated { ticket: new_ticket })
 }
 
 async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
