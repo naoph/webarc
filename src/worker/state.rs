@@ -11,7 +11,7 @@ impl State {
     /// Initiate state from config
     pub async fn from_config(config: WorkerConfig) -> Self {
         Self {
-            auth_tokens: RwLock::new(config.auth_keys()),
+            auth_tokens: RwLock::new(config.auth_tokens()),
             extractors: RwLock::new(config.extractors()),
         }
     }

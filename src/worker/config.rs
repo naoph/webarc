@@ -6,7 +6,7 @@ use snafu::prelude::*;
 #[derive(Clone, Debug, Deserialize)]
 pub struct WorkerConfig {
     listen: (String, u16),
-    auth_keys: Vec<String>,
+    auth_tokens: Vec<String>,
     extractors: std::collections::HashMap<String, String>,
 }
 
@@ -25,8 +25,8 @@ impl WorkerConfig {
         &self.listen
     }
 
-    pub fn auth_keys(&self) -> Vec<String> {
-        self.auth_keys.clone()
+    pub fn auth_tokens(&self) -> Vec<String> {
+        self.auth_tokens.clone()
     }
 
     pub fn extractors(&self) -> std::collections::HashMap<String, String> {
