@@ -28,11 +28,6 @@ pub enum InitiateCaptureResponse {
     InvalidExtractor,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct QueryCaptureProgressRequest {
-    ticket: Uuid,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]
