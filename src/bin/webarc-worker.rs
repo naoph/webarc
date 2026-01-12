@@ -1,5 +1,9 @@
+use std::io::Read;
+
+use actix_web::web::Bytes;
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, get, post, web};
 
+use async_stream::stream;
 use webarc::msg::corwrk;
 use webarc::worker;
 
@@ -80,6 +84,44 @@ async fn capture_confirm(
     }
 }
 
+#[get("/capture/output/{ticket}")]
+async fn capture_output(
+    path: web::Path<uuid::Uuid>,
+    full_req: HttpRequest,
+    state: web::Data<worker::state::State>,
+) -> impl Responder {
+    let bearer = get_bearer_token(&full_req);
+    if !state.validate_auth_token(bearer).await {
+        return HttpResponse::Unauthorized().finish();
+    }
+    let ticket: uuid::Uuid = path.into_inner();
+    let file_path = state.blob_dir().join(ticket.to_string());
+    if let Ok(mut file) = actix_files::NamedFile::open(file_path) {
+        let stream = stream! {
+            let mut chunk = vec![0u8; 10 * 1024 * 1024];
+            loop {
+                match file.read(&mut chunk) {
+                    Ok(n) => {
+                        if n == 0 {
+                            break;
+                        }
+                        yield Result::<Bytes, std::io::Error>::Ok(Bytes::from(chunk[..n].to_vec()));
+                    }
+                    Err(e) => {
+                        yield Result::<Bytes, std::io::Error>::Err(e);
+                        break;
+                    }
+                }
+            }
+        };
+        HttpResponse::Ok()
+            .content_type("application/octet-stream")
+            .streaming(stream)
+    } else {
+        HttpResponse::NotFound().finish()
+    }
+}
+
 async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
     let data = web::Data::new(worker::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -89,6 +131,7 @@ async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
             .service(capture_create)
             .service(capture_progress)
             .service(capture_confirm)
+            .service(capture_output)
     })
     .bind(config.listen())?
     .run()
