@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use actix_web::web::Bytes;
-use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, get, post, web};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, delete, get, post, web};
 
 use async_stream::stream;
 use webarc::msg::corwrk;
@@ -122,6 +122,27 @@ async fn capture_output(
     }
 }
 
+#[delete("/capture/{ticket}")]
+async fn capture_output_delete(
+    path: web::Path<uuid::Uuid>,
+    query: web::Query<corwrk::ScrubCaptureRequest>,
+    full_req: HttpRequest,
+    state: web::Data<worker::state::State>,
+) -> impl Responder {
+    let bearer = get_bearer_token(&full_req);
+    if !state.validate_auth_token(bearer).await {
+        return HttpResponse::Unauthorized().finish();
+    }
+    let ticket: uuid::Uuid = path.into_inner();
+    let hash: String = query.hash().to_string();
+    if state.get_hash(&ticket).await != Some(hash) {
+        HttpResponse::BadRequest().finish()
+    } else {
+        state.scrub_capture(&ticket).await;
+        HttpResponse::NoContent().finish()
+    }
+}
+
 async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
     let data = web::Data::new(worker::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -132,6 +153,7 @@ async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
             .service(capture_progress)
             .service(capture_confirm)
             .service(capture_output)
+            .service(capture_output_delete)
     })
     .bind(config.listen())?
     .run()

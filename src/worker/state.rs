@@ -85,4 +85,16 @@ impl State {
         let hashes = self.blob_hashes.read().await;
         hashes.get(ticket).map(|h| h.to_string())
     }
+
+    /// Remove all of a capture's references and resources
+    pub async fn scrub_capture(&self, ticket: &Uuid) {
+        let mut tasks = self.tasks.write().await;
+        tasks.remove(ticket);
+        let mut hashes = self.blob_hashes.write().await;
+        hashes.remove(ticket);
+        let blob_path = self.blob_dir().join(ticket.to_string());
+        if let Err(e) = tokio::fs::remove_file(blob_path).await {
+            error!("Scrub couldn't delete blob from filesystem: {e}");
+        }
+    }
 }

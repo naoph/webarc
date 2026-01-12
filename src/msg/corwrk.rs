@@ -63,3 +63,14 @@ pub enum ConfirmCaptureResponse {
     IncorrectHash,
     NoSuchCapture,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScrubCaptureRequest {
+    hash: String,
+}
+
+impl ScrubCaptureRequest {
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+}
