@@ -6,6 +6,7 @@ use snafu::prelude::*;
 #[derive(Clone, Debug, Deserialize)]
 pub struct CoreConfig {
     listen: (String, u16),
+    database_url: String,
 }
 
 impl CoreConfig {
@@ -21,6 +22,10 @@ impl CoreConfig {
 
     pub fn listen(&self) -> &(String, u16) {
         &self.listen
+    }
+
+    pub fn database_url(&self) -> &str {
+        &self.database_url
     }
 }
 
