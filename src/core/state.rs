@@ -16,4 +16,9 @@ impl State {
         let db_pool = Pool::new(cm);
         Self { db_pool }
     }
+
+    /// Return a copy of the database pool
+    pub async fn db_pool(&self) -> PgPool {
+        self.db_pool.clone()
+    }
 }
