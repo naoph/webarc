@@ -27,3 +27,28 @@ pub enum CreateUserResponse {
     InvalidPassword,
     UnavailableUsername,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AuthRequest {
+    username: String,
+    password: String,
+}
+
+impl AuthRequest {
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn password(&self) -> &str {
+        &self.password
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "result")]
+#[serde(rename_all = "snake_case")]
+pub enum AuthResponse {
+    Authenticated { token: String },
+    UnacceptableCredentials,
+    InvalidCredentials,
+}

@@ -1,9 +1,11 @@
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
+use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind;
 use diesel_async::RunQueryDsl;
 use log::*;
 
 use webarc::core;
+use webarc::core::models::*;
 use webarc::msg::clicor;
 
 #[get("/version")]
@@ -60,6 +62,61 @@ async fn user_create(
     }
 }
 
+#[post("/auth")]
+async fn auth(
+    req: web::Json<clicor::AuthRequest>,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    use core::schema::users;
+    if req.username().len() == 0 || req.password().len() == 0 {
+        return HttpResponse::BadRequest().json(clicor::AuthResponse::UnacceptableCredentials);
+    }
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+        }
+    };
+
+    let user: Result<Vec<DbUser>, _> = users::dsl::users
+        .filter(users::dsl::username.eq(req.username()))
+        .load(&mut conn)
+        .await;
+    let user = match user {
+        Ok(mut v) => match v.len() {
+            0 => {
+                return HttpResponse::Unauthorized().json(clicor::AuthResponse::InvalidCredentials);
+            }
+            1 => v.remove(0),
+            _ => {
+                error!("/auth multiple users with same username");
+                return HttpResponse::InternalServerError().body("Internal server error: get user");
+            }
+        },
+        Err(e) => {
+            error!("/auth get user failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: get user");
+        }
+    };
+    match bcrypt::verify(req.password(), &user.passhash) {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Unauthorized().json(clicor::AuthResponse::InvalidCredentials);
+        }
+        Err(e) => {
+            error!("/auth verify hash failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: verify user");
+        }
+    };
+    let new_token = rand::random::<u128>();
+    state.register_token(new_token, user.id).await;
+
+    HttpResponse::Ok().json(clicor::AuthResponse::Authenticated {
+        token: new_token.to_string(),
+    })
+}
+
 async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
     let data = web::Data::new(core::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -67,6 +124,7 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
             .app_data(data.clone())
             .service(version)
             .service(user_create)
+            .service(auth)
     })
     .bind(config.listen())?
     .run()

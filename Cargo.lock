@@ -2377,6 +2377,7 @@ dependencies = [
  "hex",
  "log",
  "pretty_env_logger",
+ "rand",
  "ron",
  "serde",
  "serde_json",
