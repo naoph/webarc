@@ -15,6 +15,12 @@ pub struct InsUser {
     pub passhash: String,
 }
 
+impl InsUser {
+    pub fn new(username: String, passhash: String) -> Self {
+        Self { username, passhash }
+    }
+}
+
 #[derive(Queryable)]
 pub struct DbCapture {
     pub id: i32,
@@ -36,8 +42,20 @@ pub struct InsCapture {
     pub public: bool,
 }
 
-impl InsUser {
-    pub fn new(username: String, passhash: String) -> Self {
-        Self { username, passhash }
-    }
+#[derive(Queryable)]
+pub struct DbExtract {
+    pub id: i32,
+    pub uuid: uuid::Uuid,
+    pub capture: i32,
+    pub extractor: String,
+    pub success: bool,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name=extracts)]
+pub struct InsExtract {
+    pub uuid: uuid::Uuid,
+    pub capture: i32,
+    pub extractor: String,
+    pub success: bool,
 }

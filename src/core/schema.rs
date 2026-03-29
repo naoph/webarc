@@ -12,6 +12,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    extracts (id) {
+        id -> Int4,
+        uuid -> Uuid,
+        capture -> Int4,
+        extractor -> Text,
+        success -> Bool,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Int4,
         username -> Text,
@@ -20,5 +30,6 @@ diesel::table! {
 }
 
 diesel::joinable!(captures -> users (owner));
+diesel::joinable!(extracts -> captures (capture));
 
-diesel::allow_tables_to_appear_in_same_query!(captures, users,);
+diesel::allow_tables_to_appear_in_same_query!(captures, extracts, users,);
