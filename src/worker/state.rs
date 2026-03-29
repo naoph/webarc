@@ -5,12 +5,12 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::config::WorkerConfig;
-use crate::msg::corwrk::QueryCaptureProgressResponse;
+use crate::msg::corwrk::QueryExtractProgressResponse;
 
 pub struct State {
     auth_tokens: RwLock<Vec<String>>,
     extractors: RwLock<std::collections::HashMap<String, String>>,
-    tasks: RwLock<std::collections::HashMap<Uuid, QueryCaptureProgressResponse>>,
+    tasks: RwLock<std::collections::HashMap<Uuid, QueryExtractProgressResponse>>,
     blob_hashes: RwLock<std::collections::HashMap<Uuid, String>>,
     blob_dir: PathBuf,
 }
@@ -47,47 +47,47 @@ impl State {
         &self.blob_dir
     }
 
-    /// Get the status of an ongoing capture
-    pub async fn capture_status(&self, ticket: &Uuid) -> QueryCaptureProgressResponse {
+    /// Get the status of an ongoing extract
+    pub async fn extract_status(&self, ticket: &Uuid) -> QueryExtractProgressResponse {
         self.tasks
             .read()
             .await
             .get(ticket)
-            .unwrap_or(&QueryCaptureProgressResponse::NoSuchCapture)
+            .unwrap_or(&QueryExtractProgressResponse::NoSuchExtract)
             .clone()
     }
 
-    /// Register a newly-spawned capture
-    pub async fn register_capture(&self, ticket: Uuid) {
+    /// Register a newly-spawned extract
+    pub async fn register_extract(&self, ticket: Uuid) {
         let mut tasks = self.tasks.write().await;
-        tasks.insert(ticket, QueryCaptureProgressResponse::InProgress);
+        tasks.insert(ticket, QueryExtractProgressResponse::InProgress);
         debug!("Task list:\n{:#?}", tasks);
     }
 
-    /// Mark capture as failed
-    pub async fn abort_capture(&self, ticket: Uuid) {
+    /// Mark extract as failed
+    pub async fn abort_extract(&self, ticket: Uuid) {
         let mut tasks = self.tasks.write().await;
-        tasks.insert(ticket, QueryCaptureProgressResponse::Failed);
+        tasks.insert(ticket, QueryExtractProgressResponse::Failed);
         debug!("Task {ticket} failed");
     }
 
-    /// Mark capture as completed
-    pub async fn finalize_capture(&self, ticket: Uuid, hash: String) {
+    /// Mark extract as completed
+    pub async fn finalize_extract(&self, ticket: Uuid, hash: String) {
         let mut tasks = self.tasks.write().await;
-        tasks.insert(ticket, QueryCaptureProgressResponse::Completed);
+        tasks.insert(ticket, QueryExtractProgressResponse::Completed);
         let mut hashes = self.blob_hashes.write().await;
         hashes.insert(ticket, hash);
         debug!("Task {ticket} completed");
     }
 
-    /// Get the hash of a completed capture
+    /// Get the hash of a completed extract
     pub async fn get_hash(&self, ticket: &Uuid) -> Option<String> {
         let hashes = self.blob_hashes.read().await;
         hashes.get(ticket).map(|h| h.to_string())
     }
 
-    /// Remove all of a capture's references and resources
-    pub async fn scrub_capture(&self, ticket: &Uuid) {
+    /// Remove all of a extract's references and resources
+    pub async fn scrub_extract(&self, ticket: &Uuid) {
         let mut tasks = self.tasks.write().await;
         tasks.remove(ticket);
         let mut hashes = self.blob_hashes.write().await;

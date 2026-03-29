@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct InitiateCaptureRequest {
+pub struct InitiateExtractRequest {
     url: url::Url,
     extractor: String,
 }
 
-impl InitiateCaptureRequest {
+impl InitiateExtractRequest {
     pub fn url(&self) -> &url::Url {
         &self.url
     }
@@ -22,7 +22,7 @@ impl InitiateCaptureRequest {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]
-pub enum InitiateCaptureResponse {
+pub enum InitiateExtractResponse {
     Initiated { ticket: Uuid },
     InvalidUrl,
     InvalidExtractor,
@@ -31,21 +31,21 @@ pub enum InitiateCaptureResponse {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]
-pub enum QueryCaptureProgressResponse {
+pub enum QueryExtractProgressResponse {
     InProgress,
     UnsupportedUrl,
     Failed,
     Completed,
-    NoSuchCapture,
+    NoSuchExtract,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ConfirmCaptureRequest {
+pub struct ConfirmExtractRequest {
     ticket: Uuid,
     hash: String,
 }
 
-impl ConfirmCaptureRequest {
+impl ConfirmExtractRequest {
     pub fn ticket(&self) -> &Uuid {
         &self.ticket
     }
@@ -58,18 +58,18 @@ impl ConfirmCaptureRequest {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result")]
 #[serde(rename_all = "snake_case")]
-pub enum ConfirmCaptureResponse {
+pub enum ConfirmExtractResponse {
     CorrectHash,
     IncorrectHash,
-    NoSuchCapture,
+    NoSuchExtract,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ScrubCaptureRequest {
+pub struct ScrubExtractRequest {
     hash: String,
 }
 
-impl ScrubCaptureRequest {
+impl ScrubExtractRequest {
     pub fn hash(&self) -> &str {
         &self.hash
     }

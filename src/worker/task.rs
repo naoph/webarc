@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::worker::state::State;
 
-pub async fn capture_task(ticket: Uuid, extractor: String, url: Url, state: web::Data<State>) {
-    debug!("Begin capture task\nticket:    {ticket}\nextractor: {extractor}\nurl:       {url}");
+pub async fn extract_task(ticket: Uuid, extractor: String, url: Url, state: web::Data<State>) {
+    debug!("Begin extract task\nticket:    {ticket}\nextractor: {extractor}\nurl:       {url}");
     let result = Command::new(extractor)
         .arg(url.to_string())
         .arg("asdf")
@@ -22,7 +22,7 @@ pub async fn capture_task(ticket: Uuid, extractor: String, url: Url, state: web:
         Ok(o) => o,
         Err(e) => {
             error!("Error in extractor process: {e}");
-            state.abort_capture(ticket).await;
+            state.abort_extract(ticket).await;
             return;
         }
     };
@@ -33,17 +33,17 @@ pub async fn capture_task(ticket: Uuid, extractor: String, url: Url, state: web:
             .unwrap_or("[bytes]")
             .to_string();
         error!("Extractor exited nonzero\n{}", err_string);
-        state.abort_capture(ticket).await;
+        state.abort_extract(ticket).await;
         return;
     };
     debug!("Extraction successful; blob size: {}", blob.len());
     match write_blob(state.blob_dir(), &ticket, blob).await {
         Ok(h) => {
-            state.finalize_capture(ticket, h).await;
+            state.finalize_extract(ticket, h).await;
         }
         Err(e) => {
             error!("Error writing blob to disc: {e}");
-            state.abort_capture(ticket).await;
+            state.abort_extract(ticket).await;
         }
     }
 }

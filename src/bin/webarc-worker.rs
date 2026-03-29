@@ -22,9 +22,9 @@ async fn version() -> impl Responder {
     format!("{}", env!("CARGO_PKG_VERSION"))
 }
 
-#[post("/capture/create")]
-async fn capture_create(
-    req: web::Json<corwrk::InitiateCaptureRequest>,
+#[post("/extract/create")]
+async fn extract_create(
+    req: web::Json<corwrk::InitiateExtractRequest>,
     full_req: HttpRequest,
     state: web::Data<worker::state::State>,
 ) -> impl Responder {
@@ -34,20 +34,20 @@ async fn capture_create(
     }
     let exe = match state.locate_extractor(req.extractor()).await {
         None => {
-            let response = corwrk::InitiateCaptureResponse::InvalidExtractor;
+            let response = corwrk::InitiateExtractResponse::InvalidExtractor;
             return HttpResponse::BadRequest().json(response);
         }
         Some(e) => e,
     };
     let url = req.url().clone();
     let new_ticket = uuid::Uuid::new_v4();
-    state.register_capture(new_ticket).await;
-    tokio::spawn(worker::task::capture_task(new_ticket, exe, url, state));
-    HttpResponse::Ok().json(corwrk::InitiateCaptureResponse::Initiated { ticket: new_ticket })
+    state.register_extract(new_ticket).await;
+    tokio::spawn(worker::task::extract_task(new_ticket, exe, url, state));
+    HttpResponse::Ok().json(corwrk::InitiateExtractResponse::Initiated { ticket: new_ticket })
 }
 
-#[get("/capture/progress/{ticket}")]
-async fn capture_progress(
+#[get("/extract/progress/{ticket}")]
+async fn extract_progress(
     path: web::Path<uuid::Uuid>,
     full_req: HttpRequest,
     state: web::Data<worker::state::State>,
@@ -57,13 +57,13 @@ async fn capture_progress(
         return HttpResponse::Unauthorized().finish();
     }
     let ticket = path.into_inner();
-    let status = state.capture_status(&ticket).await;
+    let status = state.extract_status(&ticket).await;
     HttpResponse::Ok().json(status)
 }
 
-#[post("/capture/confirm")]
-async fn capture_confirm(
-    req: web::Json<corwrk::ConfirmCaptureRequest>,
+#[post("/extract/confirm")]
+async fn extract_confirm(
+    req: web::Json<corwrk::ConfirmExtractRequest>,
     full_req: HttpRequest,
     state: web::Data<worker::state::State>,
 ) -> impl Responder {
@@ -73,19 +73,19 @@ async fn capture_confirm(
     }
     let known_hash = match state.get_hash(req.ticket()).await {
         None => {
-            return HttpResponse::NotFound().json(corwrk::ConfirmCaptureResponse::NoSuchCapture);
+            return HttpResponse::NotFound().json(corwrk::ConfirmExtractResponse::NoSuchExtract);
         }
         Some(h) => h,
     };
     if known_hash == req.hash() {
-        HttpResponse::Ok().json(corwrk::ConfirmCaptureResponse::CorrectHash)
+        HttpResponse::Ok().json(corwrk::ConfirmExtractResponse::CorrectHash)
     } else {
-        HttpResponse::Ok().json(corwrk::ConfirmCaptureResponse::IncorrectHash)
+        HttpResponse::Ok().json(corwrk::ConfirmExtractResponse::IncorrectHash)
     }
 }
 
-#[get("/capture/output/{ticket}")]
-async fn capture_output(
+#[get("/extract/output/{ticket}")]
+async fn extract_output(
     path: web::Path<uuid::Uuid>,
     full_req: HttpRequest,
     state: web::Data<worker::state::State>,
@@ -122,10 +122,10 @@ async fn capture_output(
     }
 }
 
-#[delete("/capture/{ticket}")]
-async fn capture_output_delete(
+#[delete("/extract/{ticket}")]
+async fn extract_output_delete(
     path: web::Path<uuid::Uuid>,
-    query: web::Query<corwrk::ScrubCaptureRequest>,
+    query: web::Query<corwrk::ScrubExtractRequest>,
     full_req: HttpRequest,
     state: web::Data<worker::state::State>,
 ) -> impl Responder {
@@ -138,7 +138,7 @@ async fn capture_output_delete(
     if state.get_hash(&ticket).await != Some(hash) {
         HttpResponse::BadRequest().finish()
     } else {
-        state.scrub_capture(&ticket).await;
+        state.scrub_extract(&ticket).await;
         HttpResponse::NoContent().finish()
     }
 }
@@ -149,11 +149,11 @@ async fn server(config: worker::config::WorkerConfig) -> std::io::Result<()> {
         App::new()
             .app_data(data.clone())
             .service(version)
-            .service(capture_create)
-            .service(capture_progress)
-            .service(capture_confirm)
-            .service(capture_output)
-            .service(capture_output_delete)
+            .service(extract_create)
+            .service(extract_progress)
+            .service(extract_confirm)
+            .service(extract_output)
+            .service(extract_output_delete)
     })
     .bind(config.listen())?
     .run()
