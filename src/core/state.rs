@@ -11,6 +11,7 @@ type PgPool = Pool<AsyncPgConnection>;
 pub struct State {
     db_pool: PgPool,
     token_map: RwLock<HashMap<u128, i32>>,
+    http_client: reqwest::Client,
 }
 
 impl State {
@@ -19,7 +20,16 @@ impl State {
         let cm = AsyncDieselConnectionManager::<AsyncPgConnection>::new(config.database_url());
         let db_pool = Pool::new(cm);
         let token_map = RwLock::new(HashMap::new());
-        Self { db_pool, token_map }
+        let user_agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        let http_client = reqwest::ClientBuilder::new()
+            .user_agent(user_agent)
+            .build()
+            .unwrap();
+        Self {
+            db_pool,
+            token_map,
+            http_client,
+        }
     }
 
     /// Return a copy of the database pool
