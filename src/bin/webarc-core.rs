@@ -1,4 +1,4 @@
-use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, get, post, web};
 use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind;
 use diesel_async::RunQueryDsl;
@@ -7,6 +7,17 @@ use log::*;
 use webarc::core;
 use webarc::core::models::*;
 use webarc::msg::clicor;
+
+/// Extract `token` from `Authorization: Bearer token` header, if able
+fn get_bearer_token(req: &HttpRequest) -> Option<u128> {
+    let authorization = req.headers().get("authorization")?.to_str().ok()?;
+    if !authorization.starts_with("Bearer ") {
+        return None;
+    }
+    let token = (&authorization[7..]).to_string();
+    let token = token.parse::<u128>().ok();
+    token
+}
 
 #[get("/version")]
 async fn version() -> impl Responder {
@@ -117,6 +128,29 @@ async fn auth(
     })
 }
 
+#[post("/capture/create")]
+async fn capture_create(
+    req: web::Json<clicor::CreateCaptureRequest>,
+    full_req: HttpRequest,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    let bearer = match get_bearer_token(&full_req) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let user_id = match state.user_from_token(bearer).await {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    HttpResponse::Ok().body(format!("hello, number {user_id}!"))
+}
+
 async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
     let data = web::Data::new(core::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -125,6 +159,7 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
             .service(version)
             .service(user_create)
             .service(auth)
+            .service(capture_create)
     })
     .bind(config.listen())?
     .run()

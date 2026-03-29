@@ -52,3 +52,23 @@ pub enum AuthResponse {
     UnacceptableCredentials,
     InvalidCredentials,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CreateCaptureRequest {
+    url: url::Url,
+}
+
+impl CreateCaptureRequest {
+    pub fn url(&self) -> &url::Url {
+        &self.url
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "result")]
+#[serde(rename_all = "snake_case")]
+pub enum CreateCaptureResponse {
+    Initiated { capture_id: uuid::Uuid },
+    NoExtractors,
+    Unauthenticated,
+}
