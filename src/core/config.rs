@@ -7,6 +7,8 @@ use snafu::prelude::*;
 pub struct CoreConfig {
     listen: (String, u16),
     database_url: String,
+    extractors: Vec<(String, String)>,
+    workers: Vec<(String, String, url::Url)>,
 }
 
 impl CoreConfig {
@@ -26,6 +28,14 @@ impl CoreConfig {
 
     pub fn database_url(&self) -> &str {
         &self.database_url
+    }
+
+    pub fn extractors(&self) -> &Vec<(String, String)> {
+        &self.extractors
+    }
+
+    pub fn workers(&self) -> &Vec<(String, String, url::Url)> {
+        &self.workers
     }
 }
 

@@ -148,6 +148,20 @@ async fn capture_create(
                 .json(clicor::CreateCaptureResponse::Unauthenticated);
         }
     };
+    let extractors = state
+        .extractor_map()
+        .await
+        .extractors_for_url(req.url())
+        .await;
+    debug!("Extractors for {}: {:?}", req.url(), extractors);
+    let capture_uuid = uuid::Uuid::new_v4();
+    let new_capture = core::models::InsCapture {
+        uuid: capture_uuid,
+        url: req.url().clone(),
+        time_initiated: chrono::Utc::now(),
+        owner: user_id,
+        public: req.public(),
+    };
     HttpResponse::Ok().body(format!("hello, number {user_id}!"))
 }
 

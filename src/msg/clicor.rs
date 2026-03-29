@@ -56,11 +56,16 @@ pub enum AuthResponse {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CreateCaptureRequest {
     url: url::Url,
+    public: bool,
 }
 
 impl CreateCaptureRequest {
     pub fn url(&self) -> &url::Url {
         &self.url
+    }
+
+    pub fn public(&self) -> bool {
+        self.public
     }
 }
 
