@@ -77,3 +77,30 @@ pub enum CreateCaptureResponse {
     NoExtractors,
     Unauthenticated,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QueryCaptureResponse {
+    in_progress: usize,
+    completed: usize,
+    failed: usize,
+}
+
+impl QueryCaptureResponse {
+    pub fn new_from_quantity(qty: usize) -> Self {
+        Self {
+            in_progress: qty,
+            completed: 0,
+            failed: 0,
+        }
+    }
+
+    pub fn incr_completed(&mut self) {
+        self.in_progress -= 1;
+        self.completed += 1;
+    }
+
+    pub fn incr_failed(&mut self) {
+        self.in_progress -= 1;
+        self.failed += 1;
+    }
+}

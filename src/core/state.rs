@@ -5,6 +5,8 @@ use diesel_async::pooled_connection::{AsyncDieselConnectionManager, mobc::Pool};
 use log::*;
 use tokio::sync::RwLock;
 
+use crate::msg;
+
 use super::config::CoreConfig;
 
 type PgPool = Pool<AsyncPgConnection>;
@@ -14,6 +16,7 @@ pub struct State {
     token_map: RwLock<HashMap<u128, i32>>,
     http_client: reqwest::Client,
     extractor_map: ExtractorMap,
+    capture_map: CaptureMap,
 }
 
 #[derive(Debug)]
@@ -58,6 +61,67 @@ impl ExtractorConfig {
     }
 }
 
+#[derive(Debug)]
+pub struct CaptureMap {
+    map: RwLock<HashMap<uuid::Uuid, CaptureStatus>>,
+}
+
+impl CaptureMap {
+    fn new() -> Self {
+        Self {
+            map: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Insert a clean status for a newly-initiated capture
+    pub async fn new_status(
+        &self,
+        capture: &uuid::Uuid,
+        extract_quantity: usize,
+        user_id: i32,
+        public: bool,
+    ) {
+        let user_restriction = match public {
+            true => None,
+            false => Some(user_id),
+        };
+        self.map.write().await.insert(
+            capture.clone(),
+            CaptureStatus::new(extract_quantity, user_restriction),
+        );
+    }
+
+    /// Get the status of an ongoing capture
+    pub async fn get_status(&self, capture: &uuid::Uuid) -> Option<CaptureStatus> {
+        self.map.read().await.get(capture).map(|a| a.clone())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CaptureStatus {
+    progress: crate::msg::clicor::QueryCaptureResponse,
+    user_restriction: Option<i32>,
+}
+
+impl CaptureStatus {
+    pub fn new(extract_quantity: usize, user_restriction: Option<i32>) -> Self {
+        Self {
+            progress: crate::msg::clicor::QueryCaptureResponse::new_from_quantity(extract_quantity),
+            user_restriction,
+        }
+    }
+
+    /// Return a clone of the progress
+    pub fn get_progress(&self) -> crate::msg::clicor::QueryCaptureResponse {
+        self.progress.clone()
+    }
+
+    /// Determine if a specific user is allowed to check this capture's progress
+    pub fn allows_user(&self, user: i32) -> bool {
+        self.user_restriction == None || self.user_restriction == Some(user)
+    }
+}
+
 impl State {
     /// Initiate state from config
     pub async fn from_config(config: CoreConfig) -> Self {
@@ -81,11 +145,13 @@ impl State {
             extractor_map.insert(e.clone(), ExtractorConfig::from_regex(rex));
         }
         let extractor_map = ExtractorMap::from_map(extractor_map);
+        let capture_map = CaptureMap::new();
         Self {
             db_pool,
             token_map,
             http_client,
             extractor_map,
+            capture_map,
         }
     }
 
@@ -108,5 +174,9 @@ impl State {
 
     pub async fn extractor_map(&self) -> &ExtractorMap {
         &self.extractor_map
+    }
+
+    pub async fn capture_map(&self) -> &CaptureMap {
+        &self.capture_map
     }
 }

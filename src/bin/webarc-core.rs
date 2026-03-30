@@ -178,7 +178,47 @@ async fn capture_create(
             .get_result(&mut conn)
             .await;
     debug!("{:#?}", new_capture);
-    HttpResponse::Ok().body(format!("hello, number {user_id}!"))
+    state
+        .capture_map()
+        .await
+        .new_status(&capture_uuid, extractors.len(), user_id, req.public())
+        .await;
+    HttpResponse::Accepted().json(clicor::CreateCaptureResponse::Initiated {
+        capture_id: capture_uuid,
+    })
+}
+
+#[get("/capture/{uuid}/status")]
+async fn capture_status(
+    uuid: web::Path<uuid::Uuid>,
+    full_req: HttpRequest,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    let bearer = match get_bearer_token(&full_req) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let user_id = match state.user_from_token(bearer).await {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let status = match state.capture_map().await.get_status(&uuid).await {
+        Some(a) => a,
+        None => {
+            return HttpResponse::NotFound().body("Not found");
+        }
+    };
+    if status.allows_user(user_id) {
+        HttpResponse::Ok().json(status.get_progress())
+    } else {
+        HttpResponse::Unauthorized().body("Unauthorized")
+    }
 }
 
 async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
@@ -190,6 +230,7 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
             .service(user_create)
             .service(auth)
             .service(capture_create)
+            .service(capture_status)
     })
     .bind(config.listen())?
     .run()
