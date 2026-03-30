@@ -23,7 +23,7 @@ pub struct ExtractorMap {
 
 impl ExtractorMap {
     /// Create new ExtractorMap from a HashMap
-    pub fn from_map(map: HashMap<String, ExtractorConfig>) -> Self {
+    fn from_map(map: HashMap<String, ExtractorConfig>) -> Self {
         Self {
             map: RwLock::new(map),
         }

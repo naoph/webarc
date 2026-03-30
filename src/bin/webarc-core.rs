@@ -154,6 +154,9 @@ async fn capture_create(
         .extractors_for_url(req.url())
         .await;
     debug!("Extractors for {}: {:?}", req.url(), extractors);
+    if extractors.len() == 0 {
+        return HttpResponse::BadRequest().json(clicor::CreateCaptureResponse::NoExtractors);
+    }
     let capture_uuid = uuid::Uuid::new_v4();
     let new_capture = core::models::InsCapture {
         uuid: capture_uuid,
@@ -162,6 +165,19 @@ async fn capture_create(
         owner: user_id,
         public: req.public(),
     };
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+        }
+    };
+    let new_capture: Result<core::models::DbCapture, _> =
+        diesel::insert_into(core::schema::captures::table)
+            .values(new_capture)
+            .get_result(&mut conn)
+            .await;
+    debug!("{:#?}", new_capture);
     HttpResponse::Ok().body(format!("hello, number {user_id}!"))
 }
 
