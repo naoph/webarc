@@ -5,6 +5,7 @@ use diesel_async::RunQueryDsl;
 use log::*;
 
 use webarc::core;
+use webarc::core::extract;
 use webarc::core::models::*;
 use webarc::msg::clicor;
 
@@ -177,12 +178,26 @@ async fn capture_create(
             .values(new_capture)
             .get_result(&mut conn)
             .await;
-    debug!("{:#?}", new_capture);
+    debug!("new_capture: {:?}", new_capture);
+    let new_capture = match new_capture {
+        Ok(c) => c,
+        Err(e) => {
+            error!("new_capture was Err: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db");
+        }
+    };
     state
         .capture_map()
         .await
         .new_status(&capture_uuid, extractors.len(), user_id, req.public())
         .await;
+    for extractor in extractors.iter() {
+        let state = state.clone();
+        let extractor = extractor.clone();
+        let url = req.url().clone();
+        let db_capid = new_capture.id;
+        tokio::spawn(extract::extract(state, extractor, url, db_capid));
+    }
     HttpResponse::Accepted().json(clicor::CreateCaptureResponse::Initiated {
         capture_id: capture_uuid,
     })

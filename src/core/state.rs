@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use diesel_async::AsyncPgConnection;
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, mobc::Pool};
 use log::*;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::msg;
 
@@ -17,6 +17,7 @@ pub struct State {
     http_client: reqwest::Client,
     extractor_map: ExtractorMap,
     capture_map: CaptureMap,
+    worker_dispatch: WorkerDispatch,
 }
 
 #[derive(Debug)]
@@ -99,26 +100,110 @@ impl CaptureMap {
 
 #[derive(Clone, Debug)]
 pub struct CaptureStatus {
-    progress: crate::msg::clicor::QueryCaptureResponse,
+    progress: msg::clicor::QueryCaptureResponse,
     user_restriction: Option<i32>,
 }
 
 impl CaptureStatus {
     pub fn new(extract_quantity: usize, user_restriction: Option<i32>) -> Self {
         Self {
-            progress: crate::msg::clicor::QueryCaptureResponse::new_from_quantity(extract_quantity),
+            progress: msg::clicor::QueryCaptureResponse::new_from_quantity(extract_quantity),
             user_restriction,
         }
     }
 
     /// Return a clone of the progress
-    pub fn get_progress(&self) -> crate::msg::clicor::QueryCaptureResponse {
+    pub fn get_progress(&self) -> msg::clicor::QueryCaptureResponse {
         self.progress.clone()
     }
 
     /// Determine if a specific user is allowed to check this capture's progress
     pub fn allows_user(&self, user: i32) -> bool {
         self.user_restriction == None || self.user_restriction == Some(user)
+    }
+}
+
+/// Mediate assignment of workers to extracts
+#[derive(Debug)]
+pub struct WorkerDispatch {
+    worker_map: RwLock<HashMap<String, WorkerDescriptor>>,
+    selector: Mutex<WorkerSelector>,
+}
+
+impl WorkerDispatch {
+    fn from_config(config: &CoreConfig) -> WorkerDispatch {
+        let mut worker_map = HashMap::new();
+        let mut worker_vec = Vec::new();
+        for w in config.workers().iter() {
+            let shortname = w.0.clone();
+            worker_vec.push(shortname.clone());
+            let worker = WorkerDescriptor {
+                url: w.2.clone(),
+                token: w.1.clone(),
+            };
+            if worker.url.scheme() != "https" {
+                println!("URL for worker `{shortname}` is not HTTPS, consider upgrading it.");
+            }
+            worker_map.insert(shortname, worker);
+        }
+        Self {
+            worker_map: RwLock::new(worker_map),
+            selector: Mutex::new(WorkerSelector::RoundRobin {
+                worker_vec,
+                next_index: 0,
+            }),
+        }
+    }
+
+    pub async fn select_worker(&self, extractor: &str, target_url: &url::Url) -> String {
+        let mut selector = self.selector.lock().await;
+        let worker_name = selector.select_worker(&extractor, &target_url);
+        worker_name.to_string()
+    }
+
+    /// Retrieve descriptor for a specified worker name
+    pub async fn describe_worker(&self, name: &str) -> WorkerDescriptor {
+        self.worker_map.read().await.get(name).unwrap().clone()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WorkerDescriptor {
+    url: url::Url,
+    token: String,
+}
+
+impl WorkerDescriptor {
+    pub fn url(&self) -> &url::Url {
+        &self.url
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+}
+
+#[derive(Debug)]
+enum WorkerSelector {
+    RoundRobin {
+        worker_vec: Vec<String>,
+        next_index: usize,
+    },
+}
+
+impl WorkerSelector {
+    pub fn select_worker(&mut self, extractor: &str, target: &url::Url) -> &str {
+        let selection;
+        match self {
+            WorkerSelector::RoundRobin {
+                worker_vec,
+                next_index,
+            } => {
+                selection = worker_vec.get(*next_index).unwrap();
+                *next_index = (*next_index + 1) % worker_vec.len();
+            }
+        }
+        selection
     }
 }
 
@@ -146,12 +231,14 @@ impl State {
         }
         let extractor_map = ExtractorMap::from_map(extractor_map);
         let capture_map = CaptureMap::new();
+        let worker_dispatch = WorkerDispatch::from_config(&config);
         Self {
             db_pool,
             token_map,
             http_client,
             extractor_map,
             capture_map,
+            worker_dispatch,
         }
     }
 
@@ -178,5 +265,9 @@ impl State {
 
     pub async fn capture_map(&self) -> &CaptureMap {
         &self.capture_map
+    }
+
+    pub fn worker_dispatch(&self) -> &WorkerDispatch {
+        &self.worker_dispatch
     }
 }
