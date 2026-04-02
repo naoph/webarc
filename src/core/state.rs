@@ -193,6 +193,8 @@ enum WorkerSelector {
 
 impl WorkerSelector {
     pub fn select_worker(&mut self, extractor: &str, target: &url::Url) -> &str {
+        let _extractor = extractor;
+        let _target = target;
         let selection;
         match self {
             WorkerSelector::RoundRobin {
