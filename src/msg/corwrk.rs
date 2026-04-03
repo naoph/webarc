@@ -10,6 +10,12 @@ pub struct InitiateExtractRequest {
 }
 
 impl InitiateExtractRequest {
+    pub fn new(url: &url::Url, extractor: &str) -> Self {
+        Self {
+            url: url.clone(),
+            extractor: extractor.to_string(),
+        }
+    }
     pub fn url(&self) -> &url::Url {
         &self.url
     }

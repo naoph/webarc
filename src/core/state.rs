@@ -272,4 +272,9 @@ impl State {
     pub fn worker_dispatch(&self) -> &WorkerDispatch {
         &self.worker_dispatch
     }
+
+    /// Return a clone of the preestablished HTTP client
+    pub fn http_client(&self) -> reqwest::Client {
+        self.http_client.clone()
+    }
 }

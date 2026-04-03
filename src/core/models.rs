@@ -82,3 +82,14 @@ pub struct InsExtract {
     pub extractor: String,
     pub success: bool,
 }
+
+impl InsExtract {
+    pub fn new(uuid: uuid::Uuid, capture: i32, extractor: String, success: bool) -> Self {
+        Self {
+            uuid,
+            capture,
+            extractor,
+            success,
+        }
+    }
+}
