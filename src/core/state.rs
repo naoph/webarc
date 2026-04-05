@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use diesel_async::AsyncPgConnection;
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, mobc::Pool};
 use log::*;
+use snafu::prelude::*;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::msg;
@@ -18,6 +20,7 @@ pub struct State {
     extractor_map: ExtractorMap,
     capture_map: CaptureMap,
     worker_dispatch: WorkerDispatch,
+    storage_manager: StorageManager,
 }
 
 #[derive(Debug)]
@@ -209,6 +212,41 @@ impl WorkerSelector {
     }
 }
 
+#[derive(Debug)]
+pub struct StorageManager {
+    root: PathBuf,
+}
+
+impl StorageManager {
+    fn from_config(config: &CoreConfig) -> Result<Self, StorageError> {
+        let root: PathBuf = config.storage_path().to_owned();
+        if !root.is_dir() {
+            error!("Storage path `{:?}` does not exist", root);
+            return Err(StorageError::LocationUnavailableError);
+        }
+        debug!("Storage path {:?} validated", root);
+        Ok(Self { root })
+    }
+
+    pub async fn temp_file(&self) -> Result<(tokio::fs::File, uuid::Uuid), StorageError> {
+        let temp_uuid = uuid::Uuid::new_v4();
+        let temp_path = self.root.join(".tmp").join(temp_uuid.to_string());
+        tokio::fs::File::create_new(temp_path)
+            .await
+            .context(FilesystemSnafu)
+            .map(|a| (a, temp_uuid))
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub enum StorageError {
+    #[snafu(display("Specified backend is not reachable"))]
+    LocationUnavailableError,
+
+    #[snafu(display("Filesystem error"))]
+    FilesystemError { source: std::io::Error },
+}
+
 impl State {
     /// Initiate state from config
     pub async fn from_config(config: CoreConfig) -> Self {
@@ -234,6 +272,8 @@ impl State {
         let extractor_map = ExtractorMap::from_map(extractor_map);
         let capture_map = CaptureMap::new();
         let worker_dispatch = WorkerDispatch::from_config(&config);
+        let storage_manager =
+            StorageManager::from_config(&config).expect("Error setting up storage manager");
         Self {
             db_pool,
             token_map,
@@ -241,6 +281,7 @@ impl State {
             extractor_map,
             capture_map,
             worker_dispatch,
+            storage_manager,
         }
     }
 
@@ -276,5 +317,9 @@ impl State {
     /// Return a clone of the preestablished HTTP client
     pub fn http_client(&self) -> reqwest::Client {
         self.http_client.clone()
+    }
+
+    pub fn storage_manager(&self) -> &StorageManager {
+        &self.storage_manager
     }
 }

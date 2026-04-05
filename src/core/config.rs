@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use snafu::prelude::*;
@@ -9,6 +9,7 @@ pub struct CoreConfig {
     database_url: String,
     extractors: Vec<(String, String)>,
     workers: Vec<(String, String, url::Url)>,
+    storage_path: PathBuf,
 }
 
 impl CoreConfig {
@@ -36,6 +37,10 @@ impl CoreConfig {
 
     pub fn workers(&self) -> &Vec<(String, String, url::Url)> {
         &self.workers
+    }
+
+    pub fn storage_path(&self) -> &Path {
+        &self.storage_path
     }
 }
 

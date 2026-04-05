@@ -52,6 +52,12 @@ pub struct ConfirmExtractRequest {
 }
 
 impl ConfirmExtractRequest {
+    pub fn new(ticket: &uuid::Uuid, hash: &str) -> Self {
+        Self {
+            ticket: ticket.clone(),
+            hash: hash.to_string(),
+        }
+    }
     pub fn ticket(&self) -> &Uuid {
         &self.ticket
     }
