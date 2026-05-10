@@ -7,6 +7,7 @@ use log::*;
 use webarc::core;
 use webarc::core::extract;
 use webarc::core::models::*;
+use webarc::core::schema;
 use webarc::msg::clicor;
 
 /// Extract `token` from `Authorization: Bearer token` header, if able
@@ -191,6 +192,18 @@ async fn capture_create(
         .await
         .new_status(&capture_uuid, extractors.len(), user_id, req.public())
         .await;
+    // Create a directory for the new capture
+    match state
+        .storage_manager()
+        .register_capture(&capture_uuid)
+        .await
+    {
+        Ok(()) => {}
+        Err(e) => {
+            error!("Capture storage directory could not be created: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: fs");
+        }
+    }
     for extractor in extractors.iter() {
         let state = state.clone();
         let extractor = extractor.clone();
@@ -236,6 +249,63 @@ async fn capture_status(
     }
 }
 
+#[get("/resource/{uuid}/{tail:.*}")]
+async fn resource(
+    pair: web::Path<(uuid::Uuid, std::path::PathBuf)>,
+    full_req: HttpRequest,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    let (uuid, tail) = pair.into_inner();
+    let bearer = match get_bearer_token(&full_req) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let user_id = match state.user_from_token(bearer).await {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+        }
+    };
+    let capture: Result<core::models::DbCapture, _> = schema::captures::table
+        .filter(schema::captures::uuid.eq(&uuid))
+        .get_result(&mut conn)
+        .await;
+    let capture = match capture {
+        Ok(c) => c,
+        Err(diesel::result::Error::NotFound) => {
+            return HttpResponse::NotFound().body("No such capture");
+        }
+        Err(e) => {
+            error!("Database error loading /capture/{uuid}: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error");
+        }
+    };
+    if (!capture.public) && (capture.owner != user_id) {
+        return HttpResponse::Unauthorized().body("Not authorized to view capture");
+    }
+    let mime = state
+        .storage_manager()
+        .asset_mime(&uuid, tail.clone())
+        .await;
+    let mime = match mime {
+        Some(m) => m,
+        None => return HttpResponse::InternalServerError().body("Internal server error: no mime"),
+    };
+    let stream = state.storage_manager().asset_stream(&uuid, tail).await;
+    HttpResponse::Ok().content_type(mime).streaming(stream)
+}
+
 async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
     let data = web::Data::new(core::state::State::from_config(config.clone()).await);
     HttpServer::new(move || {
@@ -246,6 +316,7 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
             .service(auth)
             .service(capture_create)
             .service(capture_status)
+            .service(resource)
     })
     .bind(config.listen())?
     .run()

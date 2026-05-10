@@ -1,11 +1,15 @@
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 
+use actix_web::web::Bytes;
+use async_stream::stream;
 use diesel_async::AsyncPgConnection;
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, mobc::Pool};
 use log::*;
 use snafu::prelude::*;
 use tokio::sync::{Mutex, RwLock};
+use tokio_stream::Stream;
 
 use crate::msg;
 
@@ -235,6 +239,52 @@ impl StorageManager {
             .await
             .context(FilesystemSnafu)
             .map(|a| (a, temp_uuid))
+    }
+
+    /// Create a storage subdirectory for a specified capture
+    pub async fn register_capture(&self, capture_uuid: &uuid::Uuid) -> Result<(), StorageError> {
+        let dir_path = self.root.join(capture_uuid.to_string());
+        tokio::fs::create_dir(&dir_path)
+            .await
+            .context(FilesystemSnafu)?;
+        Ok(())
+    }
+
+    /// Determine the content type for a specified file
+    pub async fn asset_mime(&self, capture_uuid: &uuid::Uuid, tail: PathBuf) -> Option<String> {
+        let joined_path = self.root.join(capture_uuid.to_string()).join(tail);
+        let cookie = magic::Cookie::open(magic::cookie::Flags::MIME_TYPE).ok()?;
+        let database = Default::default();
+        let cookie = cookie.load(&database).ok()?;
+        cookie.file(joined_path).ok()
+    }
+
+    /// Generate a byte stream for a specified file
+    pub async fn asset_stream(
+        &self,
+        capture_uuid: &uuid::Uuid,
+        tail: PathBuf,
+    ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + use<> {
+        let joined_path = self.root.join(capture_uuid.to_string()).join(tail);
+        let mut file = actix_files::NamedFile::open(joined_path).unwrap();
+        let stream = stream! {
+            let mut chunk = vec![0u8; 10 * 1024 * 1024];
+            loop {
+                match file.read(&mut chunk) {
+                    Ok(n) => {
+                        if n == 0 {
+                            break;
+                        }
+                        yield Result::<Bytes, std::io::Error>::Ok(Bytes::from(chunk[..n].to_vec()));
+                    }
+                    Err(e) => {
+                        yield Result::<Bytes, std::io::Error>::Err(e);
+                        break;
+                    }
+                }
+            }
+        };
+        stream
     }
 }
 
