@@ -259,6 +259,14 @@ impl StorageManager {
         cookie.file(joined_path).ok()
     }
 
+    /// Determine the size of a specified file in bytes
+    pub async fn asset_size(&self, capture_uuid: &uuid::Uuid, tail: PathBuf) -> Option<usize> {
+        let joined_path = self.root.join(capture_uuid.to_string()).join(tail);
+        let metadata = tokio::fs::metadata(joined_path).await.ok()?;
+        let size = metadata.len() as usize;
+        Some(size)
+    }
+
     /// Generate a byte stream for a specified file
     pub async fn asset_stream(
         &self,

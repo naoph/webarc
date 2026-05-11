@@ -302,8 +302,19 @@ async fn resource(
         Some(m) => m,
         None => return HttpResponse::InternalServerError().body("Internal server error: no mime"),
     };
+    let size = state
+        .storage_manager()
+        .asset_size(&uuid, tail.clone())
+        .await;
+    let size = match size {
+        Some(s) => s,
+        None => return HttpResponse::InternalServerError().body("Internal server error: no size"),
+    };
     let stream = state.storage_manager().asset_stream(&uuid, tail).await;
-    HttpResponse::Ok().content_type(mime).streaming(stream)
+    HttpResponse::Ok()
+        .insert_header(actix_web::http::header::ContentLength(size))
+        .content_type(mime)
+        .streaming(stream)
 }
 
 async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
