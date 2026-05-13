@@ -1,14 +1,36 @@
-use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, get, post, web};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, cookie, get, post, web};
 use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind;
 use diesel_async::RunQueryDsl;
+use lazy_static::lazy_static;
 use log::*;
+use tera::{Context, Tera};
 
 use webarc::core;
 use webarc::core::extract;
 use webarc::core::models::*;
 use webarc::core::schema;
 use webarc::msg::clicor;
+
+lazy_static! {
+    pub static ref TEMPLATES: Tera = {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/templates/*.html");
+        let tera = match Tera::new(path) {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Tera setup error: {e}");
+                std::process::exit(1);
+            }
+        };
+        tera
+    };
+}
+
+#[derive(serde::Deserialize)]
+struct AuthForm {
+    pub username: String,
+    pub password: String,
+}
 
 /// Extract `token` from `Authorization: Bearer token` header, if able
 fn get_bearer_token(req: &HttpRequest) -> Option<u128> {
@@ -21,9 +43,34 @@ fn get_bearer_token(req: &HttpRequest) -> Option<u128> {
     token
 }
 
+/// Extract token from cookie, if able
+fn get_cookie_token(req: &HttpRequest) -> Option<u128> {
+    let cookie = req.cookie("auth")?;
+    let token = cookie.value();
+    let token = token.parse::<u128>().ok();
+    token
+}
+
+/// Extract token by any available methods
+fn get_token(req: &HttpRequest) -> Option<u128> {
+    get_bearer_token(req).or(get_cookie_token(req))
+}
+
 #[get("/version")]
 async fn version() -> impl Responder {
     format!("{}", env!("CARGO_PKG_VERSION"))
+}
+
+#[get("/login")]
+async fn tera_login() -> impl Responder {
+    let document = TEMPLATES.render("login.html", &Context::new());
+    match document {
+        Ok(d) => HttpResponse::Ok().body(d),
+        Err(e) => {
+            error!("Error rendering login.html: {e}");
+            HttpResponse::InternalServerError().body("Error rendering login.html")
+        }
+    }
 }
 
 #[post("/user/create")]
@@ -128,6 +175,60 @@ async fn auth(
     HttpResponse::Ok().json(clicor::AuthResponse::Authenticated {
         token: new_token.to_string(),
     })
+}
+
+#[post("/auth/form")]
+async fn auth_form(
+    form: web::Form<AuthForm>,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    use core::schema::users;
+    if form.username.len() == 0 || form.password.len() == 0 {
+        return HttpResponse::BadRequest().json(clicor::AuthResponse::UnacceptableCredentials);
+    }
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+        }
+    };
+
+    let user: Result<Vec<DbUser>, _> = users::dsl::users
+        .filter(users::dsl::username.eq(&form.username))
+        .load(&mut conn)
+        .await;
+    let user = match user {
+        Ok(mut v) => match v.len() {
+            0 => {
+                return HttpResponse::Unauthorized().json(clicor::AuthResponse::InvalidCredentials);
+            }
+            1 => v.remove(0),
+            _ => {
+                error!("/auth multiple users with same username");
+                return HttpResponse::InternalServerError().body("Internal server error: get user");
+            }
+        },
+        Err(e) => {
+            error!("/auth get user failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: get user");
+        }
+    };
+    match bcrypt::verify(&form.password, &user.passhash) {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Unauthorized().json(clicor::AuthResponse::InvalidCredentials);
+        }
+        Err(e) => {
+            error!("/auth verify hash failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: verify user");
+        }
+    };
+    let new_token = rand::random::<u128>();
+    state.register_token(new_token, user.id).await;
+    let mut cookie = cookie::Cookie::new("auth", new_token.to_string());
+    cookie.set_path("/");
+    HttpResponse::Ok().cookie(cookie).body("login successful")
 }
 
 #[post("/capture/create")]
@@ -256,7 +357,7 @@ async fn resource(
     state: web::Data<core::state::State>,
 ) -> impl Responder {
     let (uuid, tail) = pair.into_inner();
-    let bearer = match get_bearer_token(&full_req) {
+    let bearer = match get_token(&full_req) {
         Some(t) => t,
         None => {
             return HttpResponse::Unauthorized()
@@ -323,8 +424,10 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
         App::new()
             .app_data(data.clone())
             .service(version)
+            .service(tera_login)
             .service(user_create)
             .service(auth)
+            .service(auth_form)
             .service(capture_create)
             .service(capture_status)
             .service(resource)
