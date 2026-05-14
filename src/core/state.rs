@@ -103,6 +103,28 @@ impl CaptureMap {
     pub async fn get_status(&self, capture: &uuid::Uuid) -> Option<CaptureStatus> {
         self.map.read().await.get(capture).map(|a| a.clone())
     }
+
+    /// Increment the completed extract count for an ongoing capture
+    pub async fn incr_completed(&self, capture: &uuid::Uuid) -> bool {
+        let mut map = self.map.write().await;
+        if let Some(s) = map.get_mut(capture) {
+            s.progress.incr_completed();
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /// Increment the completed extract count for an ongoing capture
+    pub async fn incr_failed(&self, capture: &uuid::Uuid) -> bool {
+        let mut map = self.map.write().await;
+        if let Some(s) = map.get_mut(capture) {
+            s.progress.incr_failed();
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

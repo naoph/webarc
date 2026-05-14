@@ -1,24 +1,49 @@
+use diesel_async::RunQueryDsl;
 use log::*;
 use sha2::Digest;
 use snafu::prelude::*;
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 
-use crate::{core::models::InsExtract, msg::corwrk};
+use crate::{core, core::models::InsExtract, msg::corwrk};
 
 pub async fn extract(
-    state: actix_web::web::Data<crate::core::state::State>,
+    mut state: actix_web::web::Data<crate::core::state::State>,
     extractor: String,
     url: url::Url,
     db_capid: i32,
     capture_uuid: uuid::Uuid,
 ) {
-    let result = try_extract(state, extractor, url, db_capid, capture_uuid).await;
-    println!("final extract result: {:#?}", result);
+    let result = try_extract(&mut state, extractor, url, db_capid, capture_uuid).await;
+    let cm = state.capture_map().await;
+    let new_extract = match result {
+        Ok(r) => {
+            let _ = cm.incr_completed(&capture_uuid).await;
+            r
+        }
+        Err(r) => {
+            let _ = cm.incr_failed(&capture_uuid).await;
+            r
+        }
+    };
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return;
+        }
+    };
+    let count = diesel::insert_into(core::schema::extracts::table)
+        .values(new_extract)
+        .execute(&mut conn)
+        .await;
+    if count != Ok(1) {
+        error!("Unexpected issue inserting extract: count == {:?}", count);
+    }
 }
 
 async fn try_extract(
-    state: actix_web::web::Data<crate::core::state::State>,
+    state: &mut actix_web::web::Data<crate::core::state::State>,
     extractor: String,
     url: url::Url,
     db_capid: i32,
