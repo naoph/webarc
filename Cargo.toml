@@ -6,8 +6,10 @@ edition = "2024"
 [dependencies]
 actix-files = "0.6.9"
 actix-web = "4.12.1"
+async-compression = { version = "0.4.42", features = ["gzip", "tokio"] }
 async-process = "2.5.0"
 async-stream = "0.3.6"
+async-tar = { version = "0.6.0", default-features = false, features = ["runtime-tokio"] }
 bcrypt = "0.18.0"
 chrono = { version = "0.4.44", features = ["serde"] }
 diesel = { version = "2.3.5", features = ["chrono", "postgres", "uuid"] }

@@ -310,7 +310,13 @@ async fn capture_create(
         let extractor = extractor.clone();
         let url = req.url().clone();
         let db_capid = new_capture.id;
-        tokio::spawn(extract::extract(state, extractor, url, db_capid));
+        tokio::spawn(extract::extract(
+            state,
+            extractor,
+            url,
+            db_capid,
+            capture_uuid.clone(),
+        ));
     }
     HttpResponse::Accepted().json(clicor::CreateCaptureResponse::Initiated {
         capture_id: capture_uuid,

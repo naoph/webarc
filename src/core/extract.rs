@@ -11,8 +11,9 @@ pub async fn extract(
     extractor: String,
     url: url::Url,
     db_capid: i32,
+    capture_uuid: uuid::Uuid,
 ) {
-    let result = try_extract(state, extractor, url, db_capid).await;
+    let result = try_extract(state, extractor, url, db_capid, capture_uuid).await;
     println!("final extract result: {:#?}", result);
 }
 
@@ -21,6 +22,7 @@ async fn try_extract(
     extractor: String,
     url: url::Url,
     db_capid: i32,
+    capture_uuid: uuid::Uuid,
 ) -> Result<InsExtract, InsExtract> {
     let worker = state
         .worker_dispatch()
@@ -176,7 +178,22 @@ async fn try_extract(
             }
         }
     }
-    Ok(failure)
+
+    // Install received archive to permanent location
+    let install_result = state
+        .storage_manager()
+        .install_temp(&tfn, &capture_uuid, &extractor)
+        .await;
+    match install_result {
+        Ok(()) => {}
+        Err(e) => {
+            error!("Installing tarball {tfn} for {capture_uuid}/{extractor} failed: {e}");
+            return Err(failure);
+        }
+    }
+
+    let success = InsExtract::new(extract_uuid.clone(), db_capid, extractor.clone(), true);
+    Ok(success)
 }
 
 async fn initiate(

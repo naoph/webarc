@@ -241,6 +241,30 @@ impl StorageManager {
             .map(|a| (a, temp_uuid))
     }
 
+    /// Install a received tarball to its final location
+    pub async fn install_temp(
+        &self,
+        temp_uuid: &uuid::Uuid,
+        capture_uuid: &uuid::Uuid,
+        extractor: &str,
+    ) -> Result<(), StorageError> {
+        let source_path = self.root.join(".tmp").join(temp_uuid.to_string());
+        let destination_path = self.root.join(capture_uuid.to_string()).join(extractor);
+        let tgz = tokio::fs::File::open(&source_path)
+            .await
+            .context(FilesystemSnafu)?;
+        let tgz = tokio::io::BufReader::new(tgz);
+        let tar = async_compression::tokio::bufread::GzipDecoder::new(tgz);
+        let arc = async_tar::Archive::new(tar);
+        debug!("Extracting {:?} to {:?}", source_path, destination_path);
+        arc.unpack(destination_path).await.context(UnpackSnafu)?;
+        debug!("Following extraction, remove source {:?}", source_path);
+        tokio::fs::remove_file(source_path)
+            .await
+            .context(FilesystemSnafu)?;
+        Ok(())
+    }
+
     /// Create a storage subdirectory for a specified capture
     pub async fn register_capture(&self, capture_uuid: &uuid::Uuid) -> Result<(), StorageError> {
         let dir_path = self.root.join(capture_uuid.to_string());
@@ -303,6 +327,9 @@ pub enum StorageError {
 
     #[snafu(display("Filesystem error"))]
     FilesystemError { source: std::io::Error },
+
+    #[snafu(display("Archive unpacking error"))]
+    UnpackError { source: std::io::Error },
 }
 
 impl State {
