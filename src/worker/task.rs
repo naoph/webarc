@@ -58,7 +58,7 @@ pub async fn write_blob(
     let mut f = tokio::fs::File::create(write_path)
         .await
         .context(CreateBlobFileSnafu)?;
-    f.write(&bytevec).await.context(WriteBlobFileSnafu)?;
+    f.write_all(&bytevec).await.context(WriteBlobFileSnafu)?;
     f.flush().await.context(WriteBlobFileSnafu)?;
     let mut hasher = Sha256::new();
     hasher.update(&bytevec);

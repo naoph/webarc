@@ -303,7 +303,14 @@ async fn validate(
     let resp: corwrk::ConfirmExtractResponse = resp.json().await.context(JsonSnafu)?;
     match resp {
         corwrk::ConfirmExtractResponse::CorrectHash => Ok(true),
-        _ => Ok(false),
+        corwrk::ConfirmExtractResponse::IncorrectHash => {
+            debug!("hash validation for ticket {ticket}: IncorrectHash");
+            Ok(false)
+        }
+        corwrk::ConfirmExtractResponse::NoSuchExtract => {
+            debug!("hash validation for ticket {ticket}: NoSuchExtract");
+            Ok(false)
+        }
     }
 }
 
