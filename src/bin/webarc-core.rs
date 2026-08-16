@@ -7,7 +7,6 @@ use log::*;
 use tera::{Context, Tera};
 
 use webarc::core;
-use webarc::core::extract;
 use webarc::core::models::*;
 use webarc::core::schema;
 use webarc::msg::clicor;
@@ -231,7 +230,7 @@ async fn auth_form(
     HttpResponse::Ok().cookie(cookie).body("login successful")
 }
 
-#[post("/capture/create")]
+#[post("/0/capture/create")]
 async fn capture_create(
     req: web::Json<clicor::CreateCaptureRequest>,
     full_req: HttpRequest,
@@ -251,76 +250,20 @@ async fn capture_create(
                 .json(clicor::CreateCaptureResponse::Unauthenticated);
         }
     };
-    let extractors = state
-        .extractor_map()
-        .await
-        .extractors_for_url(req.url())
-        .await;
-    debug!("Extractors for {}: {:?}", req.url(), extractors);
-    if extractors.len() == 0 {
-        return HttpResponse::BadRequest().json(clicor::CreateCaptureResponse::NoExtractors);
-    }
-    let capture_uuid = uuid::Uuid::new_v4();
-    let new_capture = core::models::InsCapture {
-        uuid: capture_uuid,
-        url: req.url().clone(),
-        time_initiated: chrono::Utc::now(),
-        owner: user_id,
-        public: req.public(),
-    };
-    let mut conn = match state.db_pool().await.get().await {
-        Ok(c) => c,
-        Err(e) => {
-            error!("db_pool.get() failed: {e}");
-            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+
+    let result = core::act::create_capture(req.url().clone(), user_id, req.public(), state).await;
+
+    match result {
+        Ok(uuid) => HttpResponse::Accepted()
+            .json(clicor::CreateCaptureResponse::Initiated { capture_id: uuid }),
+        Err(core::act::CreateCaptureError::NoAppropriateExtractorsError) => {
+            HttpResponse::BadRequest().json(clicor::CreateCaptureResponse::NoExtractors)
         }
-    };
-    let new_capture: Result<core::models::DbCapture, _> =
-        diesel::insert_into(core::schema::captures::table)
-            .values(new_capture)
-            .get_result(&mut conn)
-            .await;
-    debug!("new_capture: {:?}", new_capture);
-    let new_capture = match new_capture {
-        Ok(c) => c,
         Err(e) => {
-            error!("new_capture was Err: {e}");
-            return HttpResponse::InternalServerError().body("Internal server error: db");
-        }
-    };
-    state
-        .capture_map()
-        .await
-        .new_status(&capture_uuid, extractors.len(), user_id, req.public())
-        .await;
-    // Create a directory for the new capture
-    match state
-        .storage_manager()
-        .register_capture(&capture_uuid)
-        .await
-    {
-        Ok(()) => {}
-        Err(e) => {
-            error!("Capture storage directory could not be created: {e}");
-            return HttpResponse::InternalServerError().body("Internal server error: fs");
+            error!("Error in create_capture: {e}");
+            HttpResponse::InternalServerError().body("Internal server error")
         }
     }
-    for extractor in extractors.iter() {
-        let state = state.clone();
-        let extractor = extractor.clone();
-        let url = req.url().clone();
-        let db_capid = new_capture.id;
-        tokio::spawn(extract::extract(
-            state,
-            extractor,
-            url,
-            db_capid,
-            capture_uuid.clone(),
-        ));
-    }
-    HttpResponse::Accepted().json(clicor::CreateCaptureResponse::Initiated {
-        capture_id: capture_uuid,
-    })
 }
 
 #[get("/capture/{uuid}/status")]
