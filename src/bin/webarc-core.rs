@@ -72,6 +72,66 @@ async fn tera_login() -> impl Responder {
     }
 }
 
+#[get("/dashboard")]
+async fn dashboard(state: web::Data<core::state::State>, full_req: HttpRequest) -> impl Responder {
+    use core::schema::captures;
+    let bearer = match get_cookie_token(&full_req) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let user_id = match state.user_from_token(bearer).await {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let mut context = Context::new();
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+        }
+    };
+    let captures: Result<Vec<DbCapture>, _> = captures::dsl::captures
+        .filter(captures::dsl::owner.eq(user_id))
+        .order(captures::dsl::time_initiated.desc())
+        .limit(20)
+        .load(&mut conn)
+        .await;
+    let captures = match captures {
+        Ok(c) => c,
+        Err(e) => {
+            error!("recent user captures failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: query");
+        }
+    };
+    let captures: Vec<(String, String, String)> = captures
+        .into_iter()
+        .map(|c| {
+            (
+                c.uuid.to_string(),
+                chrono_humanize::HumanTime::from(c.time_initiated).to_string(),
+                c.url.to_string(),
+            )
+        })
+        .collect();
+    error!("{:#?}", captures);
+    context.insert("captures", &captures);
+    let document = TEMPLATES.render("dashboard.html", &context);
+    match document {
+        Ok(d) => HttpResponse::Ok().body(d),
+        Err(e) => {
+            error!("Error rendering dashboard.html: {e}");
+            HttpResponse::InternalServerError().body("Error rendering dashboard.html")
+        }
+    }
+}
+
 #[post("/user/create")]
 async fn user_create(
     req: web::Json<clicor::CreateUserRequest>,
@@ -299,6 +359,75 @@ async fn capture_status(
     }
 }
 
+#[get("/capture/{uuid}/progress")]
+async fn capture_progress(
+    uuid: web::Path<uuid::Uuid>,
+    full_req: HttpRequest,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    use core::schema::{captures, extracts};
+    let bearer = match get_cookie_token(&full_req) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let user_id = match state.user_from_token(bearer).await {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(clicor::CreateCaptureResponse::Unauthenticated);
+        }
+    };
+    let mut context = Context::new();
+    let mut conn = match state.db_pool().await.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("db_pool.get() failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: db pool");
+        }
+    };
+    let uuid: uuid::Uuid = uuid.into_inner();
+    let capture: Result<DbCapture, _> = captures::dsl::captures
+        .filter(captures::dsl::uuid.eq(uuid))
+        .get_result(&mut conn)
+        .await;
+    let capture = match capture {
+        Ok(c) => c,
+        Err(e) => {
+            debug!("Capture {uuid} does not exist");
+            return HttpResponse::NotFound().body("Capture does not exist");
+        }
+    };
+    let extracts: Result<Vec<DbExtract>, _> = extracts::dsl::extracts
+        .filter(extracts::dsl::capture.eq(capture.id))
+        .order(extracts::dsl::extractor.asc())
+        .load(&mut conn)
+        .await;
+    let extracts = match extracts {
+        Ok(c) => c,
+        Err(e) => {
+            error!("capture progress failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal server error: query");
+        }
+    };
+    let extracts: Vec<(String, String)> = extracts
+        .into_iter()
+        .map(|e| (e.extractor, e.success.to_string()))
+        .collect();
+    error!("{:#?}", extracts);
+    context.insert("extracts", &extracts);
+    let document = TEMPLATES.render("capture.html", &context);
+    match document {
+        Ok(d) => HttpResponse::Ok().body(d),
+        Err(e) => {
+            error!("Error rendering capture.html: {e}");
+            HttpResponse::InternalServerError().body("Error rendering capture.html")
+        }
+    }
+}
+
 #[get("/resource/{uuid}/{tail:.*}")]
 async fn resource(
     pair: web::Path<(uuid::Uuid, std::path::PathBuf)>,
@@ -374,11 +503,13 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
             .app_data(data.clone())
             .service(version)
             .service(tera_login)
+            .service(dashboard)
             .service(user_create)
             .service(auth)
             .service(auth_form)
             .service(capture_create)
             .service(capture_status)
+            .service(capture_progress)
             .service(resource)
     })
     .bind(config.listen())?
