@@ -103,4 +103,16 @@ impl QueryCaptureResponse {
         self.in_progress -= 1;
         self.failed += 1;
     }
+
+    pub fn in_progress(&self) -> usize {
+        self.in_progress
+    }
+
+    pub fn completed(&self) -> usize {
+        self.completed
+    }
+
+    pub fn failed(&self) -> usize {
+        self.failed
+    }
 }

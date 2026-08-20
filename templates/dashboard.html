@@ -13,11 +13,12 @@
     <form action="/capture/create/form" method="post">
       <input type="text" name="url" placeholder="url" />
       <label>
-        <input type="checkbox" name="public">
+        <input type="hidden" name="public" value="false" />
+        <input type="checkbox" name="public" value="true" />
         Public?
       </label>
       <br/>
-      <input type="submit"></input>
+      <input type="submit" />
     </form>
     <table>
       <tr>

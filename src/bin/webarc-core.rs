@@ -326,6 +326,45 @@ async fn capture_create(
     }
 }
 
+#[post("/capture/create/form")]
+async fn capture_create_form(
+    form: web::Form<clicor::CreateCaptureRequest>,
+    full_req: HttpRequest,
+    state: web::Data<core::state::State>,
+) -> impl Responder {
+    let cookie = match get_cookie_token(&full_req) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::Unauthorized().body("Unauthorized");
+        }
+    };
+    let user_id = match state.user_from_token(cookie).await {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized().body("Unauthorized");
+        }
+    };
+
+    let url = form.url().clone();
+    let result = core::act::create_capture(url, user_id, form.public(), state).await;
+
+    match result {
+        Ok(uuid) => {
+            let destination = format!("/capture/{uuid}/progress");
+            HttpResponse::SeeOther()
+                .insert_header(("Location", destination))
+                .finish()
+        }
+        Err(core::act::CreateCaptureError::NoAppropriateExtractorsError) => {
+            HttpResponse::BadRequest().body("No appropriate extractors for this URL")
+        }
+        Err(e) => {
+            error!("Error in create_capture: {e}");
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
+    }
+}
+
 #[get("/capture/{uuid}/status")]
 async fn capture_status(
     uuid: web::Path<uuid::Uuid>,
@@ -380,7 +419,19 @@ async fn capture_progress(
                 .json(clicor::CreateCaptureResponse::Unauthenticated);
         }
     };
+    let status = match state.capture_map().await.get_status(&uuid).await {
+        Some(a) => a,
+        None => {
+            return HttpResponse::NotFound().body("Not found");
+        }
+    };
+    let progress = if status.allows_user(user_id) {
+        status.get_progress()
+    } else {
+        return HttpResponse::Unauthorized().body("Unauthorized");
+    };
     let mut context = Context::new();
+    /*
     let mut conn = match state.db_pool().await.get().await {
         Ok(c) => c,
         Err(e) => {
@@ -417,7 +468,10 @@ async fn capture_progress(
         .map(|e| (e.extractor, e.success.to_string()))
         .collect();
     error!("{:#?}", extracts);
-    context.insert("extracts", &extracts);
+    */
+    context.insert("in_progress", &progress.in_progress());
+    context.insert("completed", &progress.completed());
+    context.insert("failed", &progress.failed());
     let document = TEMPLATES.render("capture.html", &context);
     match document {
         Ok(d) => HttpResponse::Ok().body(d),
@@ -508,6 +562,7 @@ async fn server(config: core::config::CoreConfig) -> std::io::Result<()> {
             .service(auth)
             .service(auth_form)
             .service(capture_create)
+            .service(capture_create_form)
             .service(capture_status)
             .service(capture_progress)
             .service(resource)

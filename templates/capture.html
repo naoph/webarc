@@ -15,12 +15,18 @@
         <th>Extractor</th>
         <th>Succeeded</th>
       </tr>
-      {% for extract in extracts %}
       <tr>
-        <td>{{ extract.0 }}</td>
-        <td>{{ extract.1 }}</td>
+        <td>in progress</td>
+        <td>{{ in_progress }}</td>
       </tr>
-      {% endfor %}
+      <tr>
+        <td>completed</td>
+        <td>{{ completed }}</td>
+      </tr>
+      <tr>
+        <td>failed</td>
+        <td>{{ failed }}</td>
+      </tr>
     </table>
   </body>
 </html>
