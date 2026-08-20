@@ -78,15 +78,17 @@ async fn dashboard(state: web::Data<core::state::State>, full_req: HttpRequest) 
     let bearer = match get_cookie_token(&full_req) {
         Some(t) => t,
         None => {
-            return HttpResponse::Unauthorized()
-                .json(clicor::CreateCaptureResponse::Unauthenticated);
+            return HttpResponse::SeeOther()
+                .insert_header(("Location", "/login"))
+                .finish();
         }
     };
     let user_id = match state.user_from_token(bearer).await {
         Some(u) => u,
         None => {
-            return HttpResponse::Unauthorized()
-                .json(clicor::CreateCaptureResponse::Unauthenticated);
+            return HttpResponse::SeeOther()
+                .insert_header(("Location", "/login"))
+                .finish();
         }
     };
     let mut context = Context::new();
@@ -287,7 +289,10 @@ async fn auth_form(
     state.register_token(new_token, user.id).await;
     let mut cookie = cookie::Cookie::new("auth", new_token.to_string());
     cookie.set_path("/");
-    HttpResponse::Ok().cookie(cookie).body("login successful")
+    HttpResponse::SeeOther()
+        .cookie(cookie)
+        .insert_header(("Location", "/dashboard"))
+        .finish()
 }
 
 #[post("/0/capture/create")]
@@ -335,13 +340,17 @@ async fn capture_create_form(
     let cookie = match get_cookie_token(&full_req) {
         Some(t) => t,
         None => {
-            return HttpResponse::Unauthorized().body("Unauthorized");
+            return HttpResponse::SeeOther()
+                .insert_header(("Location", "/login"))
+                .finish();
         }
     };
     let user_id = match state.user_from_token(cookie).await {
         Some(u) => u,
         None => {
-            return HttpResponse::Unauthorized().body("Unauthorized");
+            return HttpResponse::SeeOther()
+                .insert_header(("Location", "/login"))
+                .finish();
         }
     };
 
@@ -408,15 +417,17 @@ async fn capture_progress(
     let bearer = match get_cookie_token(&full_req) {
         Some(t) => t,
         None => {
-            return HttpResponse::Unauthorized()
-                .json(clicor::CreateCaptureResponse::Unauthenticated);
+            return HttpResponse::SeeOther()
+                .insert_header(("Location", "/login"))
+                .finish();
         }
     };
     let user_id = match state.user_from_token(bearer).await {
         Some(u) => u,
         None => {
-            return HttpResponse::Unauthorized()
-                .json(clicor::CreateCaptureResponse::Unauthenticated);
+            return HttpResponse::SeeOther()
+                .insert_header(("Location", "/login"))
+                .finish();
         }
     };
     let status = match state.capture_map().await.get_status(&uuid).await {
